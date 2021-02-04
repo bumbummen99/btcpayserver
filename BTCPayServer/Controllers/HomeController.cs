@@ -110,7 +110,7 @@ namespace BTCPayServer.Controllers
         private IActionResult GoToHome()
         {
             if (SignInManager.IsSignedIn(User))
-                return View("Home");
+                return RedirectToAction(nameof(UserStoresController.ListStores), "UserStores");
             else
                 return RedirectToAction(nameof(AccountController.Login), "Account");
         }
