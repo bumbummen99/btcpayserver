@@ -34,6 +34,8 @@ jobs:
           tags: |
             skyraptor/btcpayserver:latest
             skyraptor/btcpayserver:amd64-latest
+            skyraptor/btcpayserver:${{ github.run_id }}
+            skyraptor/btcpayserver:amd64-${{ github.run_id }}
       -
         name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
@@ -63,7 +65,9 @@ jobs:
           context: .
           file: ./arm32v7.Dockerfile
           push: true
-          tags: skyraptor/btcpayserver:arm32v7-latest
+          tags: |
+            skyraptor/btcpayserver:arm32v7-latest
+            skyraptor/btcpayserver:arm32v7-${{ github.run_id }}
       -
         name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
@@ -93,7 +97,9 @@ jobs:
           context: .
           file: ./arm64v8.Dockerfile
           push: true
-          tags: skyraptor/btcpayserver:arm64v8-latest
+          tags: |
+            skyraptor/btcpayserver:arm64v8-latest
+            skyraptor/btcpayserver:arm64v8-${{ github.run_id }}
       -
         name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
