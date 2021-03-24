@@ -87,6 +87,19 @@ namespace BTCPayServer.Tests
                 Assert.True(await repo.TryLock(outpoint));
                 Assert.True(await repo.TryUnlock(outpoint));
                 Assert.False(await repo.TryUnlock(outpoint));
+
+                // Make sure that if any can't be locked, all are not locked
+                var outpoint1 = RandomOutpoint();
+                var outpoint2 = RandomOutpoint();
+                Assert.True(await repo.TryLockInputs(new[] { outpoint1 }));
+                Assert.False(await repo.TryLockInputs(new[] { outpoint1, outpoint2 }));
+                Assert.True(await repo.TryLockInputs(new[] { outpoint2 }));
+
+                outpoint1 = RandomOutpoint();
+                outpoint2 = RandomOutpoint();
+                Assert.True(await repo.TryLockInputs(new[] { outpoint1 }));
+                Assert.False(await repo.TryLockInputs(new[] { outpoint2, outpoint1 }));
+                Assert.True(await repo.TryLockInputs(new[] { outpoint2 }));
             }
         }
 
@@ -364,10 +377,17 @@ namespace BTCPayServer.Tests
                 var alice = tester.NewAccount();
                 await alice.RegisterDerivationSchemeAsync("BTC", ScriptPubKeyType.Segwit, true);
                 await notifications.ListenDerivationSchemesAsync(new[] { alice.DerivationScheme });
-                var address = (await nbx.GetUnusedAsync(alice.DerivationScheme, DerivationFeature.Deposit)).Address;
-                await tester.ExplorerNode.GenerateAsync(1);
-                tester.ExplorerNode.SendToAddress(address, Money.Coins(1.0m));
+
+                BitcoinAddress aliceAddress = null;
+                await tester.WaitForEvent<NewOnChainTransactionEvent>(async() =>
+                {
+                    aliceAddress = (await nbx.GetUnusedAsync(alice.DerivationScheme, DerivationFeature.Deposit)).Address;
+                    await tester.ExplorerNode.GenerateAsync(1);
+                    tester.ExplorerNode.SendToAddress(aliceAddress, Money.Coins(1.0m));
+                });
+
                 await notifications.NextEventAsync();
+
                 var paymentAddress = new Key().PubKey.GetAddress(ScriptPubKeyType.Legacy, Network.RegTest);
                 var otherAddress = new Key().PubKey.GetAddress(ScriptPubKeyType.Legacy, Network.RegTest);
                 var psbt = (await nbx.CreatePSBTAsync(alice.DerivationScheme, new CreatePSBTRequest()
@@ -501,8 +521,8 @@ namespace BTCPayServer.Tests
                 await bob.GrantAccessAsync();
                 await bob.RegisterDerivationSchemeAsync("BTC", ScriptPubKeyType.Segwit, true);
                 await notifications.ListenDerivationSchemesAsync(new[] { bob.DerivationScheme });
-                address = (await nbx.GetUnusedAsync(bob.DerivationScheme, DerivationFeature.Deposit)).Address;
-                tester.ExplorerNode.SendToAddress(address, Money.Coins(1.1m));
+                aliceAddress = (await nbx.GetUnusedAsync(bob.DerivationScheme, DerivationFeature.Deposit)).Address;
+                tester.ExplorerNode.SendToAddress(aliceAddress, Money.Coins(1.1m));
                 await notifications.NextEventAsync();
                 bob.ModifyStore(s => s.PayJoinEnabled = true);
                 var invoice = bob.BitPay.CreateInvoice(
@@ -901,10 +921,6 @@ retry:
                     .SendEstimatedFees(new FeeRate(100m))
                     .BuildTransaction(true);
 
-                //Attempt 1: Send a signed tx to invoice 1 that does not pay the invoice at all 
-                //Result: reject
-                // Assert.False((await tester.PayTester.HttpClient.PostAsync(endpoint,
-                //     new StringContent(Invoice2Coin1.ToHex(), Encoding.UTF8, "text/plain"))).IsSuccessStatusCode);
 
                 //Attempt 2: Create two transactions using different inputs and send them to the same invoice. 
                 //Result: Second Tx should be rejected. 
