@@ -106,6 +106,7 @@ namespace BTCPayServer.Controllers
         }
 
         [HttpPost]
+        [Route("/")]
         [Route("/apps/{appId}/pos/{viewType?}")]
         [XFrameOptionsAttribute(XFrameOptionsAttribute.XFrameOptions.AllowAll)]
         [IgnoreAntiforgeryToken]
