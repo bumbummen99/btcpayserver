@@ -1,4 +1,5 @@
 using System;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using System.Text;
@@ -11,6 +12,7 @@ using BTCPayServer.Services.Wallets;
 using BTCPayServer.Tests.Logging;
 using BTCPayServer.Views.Manage;
 using BTCPayServer.Views.Server;
+using BTCPayServer.Views.Stores;
 using BTCPayServer.Views.Wallets;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -313,13 +315,15 @@ namespace BTCPayServer.Tests
         }
 
         [Fact(Timeout = TestTimeout)]
+        [Trait("Lightning", "Lightning")]
         public async Task CanCreateStores()
         {
             using (var s = SeleniumTester.Create())
             {
+                s.Server.ActivateLightning();
                 await s.StartAsync();
-                var alice = s.RegisterNewUser();
-                var storeData = s.CreateNewStore();
+                var alice = s.RegisterNewUser(true);
+                var (storeName, storeId) = s.CreateNewStore();
                 var onchainHint = "Set up your wallet to receive payments at your store.";
                 var offchainHint = "A connection to a Lightning node is required to receive Lightning payments.";
 
@@ -328,23 +332,31 @@ namespace BTCPayServer.Tests
                 Assert.True(s.Driver.PageSource.Contains(offchainHint), "Lightning hint not present");
 
                 s.GoToStores();
-                Assert.True(s.Driver.PageSource.Contains("warninghint_" + storeData.storeId),
-                    "Warning hint on list not present");
+                Assert.True(s.Driver.PageSource.Contains($"warninghint_{storeId}"), "Warning hint on list not present");
 
-                s.GoToStore(storeData.storeId);
+                s.GoToStore(storeId);
+                Assert.Contains(storeName, s.Driver.PageSource);
                 Assert.True(s.Driver.PageSource.Contains(onchainHint), "Wallet hint should be present at this point");
                 Assert.True(s.Driver.PageSource.Contains(offchainHint), "Lightning hint should be present at this point");
 
-                s.AddDerivationScheme(); // wallet hint should be dismissed
+                // setup onchain wallet
+                s.GoToStore(storeId);
+                s.AddDerivationScheme();
                 s.Driver.AssertNoError();
-                Assert.False(s.Driver.PageSource.Contains(onchainHint),
-                    "Wallet hint not dismissed on derivation scheme add");// dismiss lightning hint
+                Assert.False(s.Driver.PageSource.Contains(onchainHint), "Wallet hint not dismissed on derivation scheme add");
 
-                Assert.Contains(storeData.storeName, s.Driver.PageSource);
+                // setup offchain wallet
+                s.GoToStore(storeId);
+                s.AddLightningNode();
+                s.Driver.AssertNoError();
+                var successAlert = s.FindAlertMessage();
+                Assert.Contains("BTC Lightning node modified.", successAlert.Text);
+                Assert.False(s.Driver.PageSource.Contains(offchainHint), "Lightning hint should be dismissed at this point");
+
                 var storeUrl = s.Driver.Url;
                 s.ClickOnAllSideMenus();
                 s.GoToInvoices();
-                var invoiceId = s.CreateInvoice(storeData.storeName);
+                var invoiceId = s.CreateInvoice(storeName);
                 s.FindAlertMessage();
                 s.Driver.FindElement(By.ClassName("invoice-details-link")).Click();
                 var invoiceUrl = s.Driver.Url;
@@ -399,10 +411,6 @@ namespace BTCPayServer.Tests
                 s.Logout();
                 s.LogIn(alice);
                 s.Driver.FindElement(By.Id("Stores")).Click();
-
-                // there shouldn't be any hints now
-                Assert.False(s.Driver.PageSource.Contains(offchainHint), "Lightning hint should be dismissed at this point");
-
                 s.Driver.FindElement(By.LinkText("Remove")).Click();
                 s.Driver.FindElement(By.Id("continue")).Click();
                 s.Driver.FindElement(By.Id("Stores")).Click();
@@ -957,15 +965,18 @@ namespace BTCPayServer.Tests
                 var payouts = s.Driver.FindElements(By.ClassName("pp-payout"));
                 Assert.Equal(2, payouts.Count);
                 payouts[1].Click();
-                Assert.Contains("No payout waiting for approval", s.Driver.PageSource);
-
+                Assert.Empty(s.Driver.FindElements(By.ClassName("payout")));
                 // PP2 should have payouts
                 s.GoToWallet(navPages: WalletsNavPages.PullPayments);
                 payouts = s.Driver.FindElements(By.ClassName("pp-payout"));
                 payouts[0].Click();
-                Assert.DoesNotContain("No payout waiting for approval", s.Driver.PageSource);
-                s.Driver.FindElement(By.Id("selectAllCheckbox")).Click();
-                s.Driver.FindElement(By.Id("payCommand")).Click();
+                
+                Assert.NotEmpty(s.Driver.FindElements(By.ClassName("payout")));
+                s.Driver.FindElement(By.Id($"{PayoutState.AwaitingApproval}-selectAllCheckbox")).Click();
+                
+                s.Driver.FindElement(By.Id($"{PayoutState.AwaitingApproval}-actions")).Click();
+                s.Driver.FindElement(By.Id($"{PayoutState.AwaitingApproval}-approve-pay")).Click();
+                
                 s.Driver.FindElement(By.Id("SendMenu")).Click();
                 s.Driver.FindElement(By.CssSelector("button[value=nbx-seed]")).Click();
                 s.Driver.FindElement(By.CssSelector("button[value=broadcast]")).Click();
@@ -980,13 +991,14 @@ namespace BTCPayServer.Tests
                 Assert.Equal("payout", s.Driver.FindElement(By.ClassName("transactionLabel")).Text);
 
                 s.GoToWallet(navPages: WalletsNavPages.Payouts);
+                ReadOnlyCollection<IWebElement> txs;
                 TestUtils.Eventually(() =>
                 {
                     s.Driver.Navigate().Refresh();
-                    Assert.Contains("No payout waiting for approval", s.Driver.PageSource);
+                    
+                    txs = s.Driver.FindElements(By.ClassName("transaction-link"));
+                    Assert.Equal(2, txs.Count);
                 });
-                var txs = s.Driver.FindElements(By.ClassName("transaction-link"));
-                Assert.Equal(2, txs.Count);
 
                 s.Driver.Navigate().GoToUrl(viewPullPaymentUrl);
                 txs = s.Driver.FindElements(By.ClassName("transaction-link"));
@@ -1007,7 +1019,7 @@ namespace BTCPayServer.Tests
                 {
                     using var ctx = s.Server.PayTester.GetService<ApplicationDbContextFactory>().CreateContext();
                     var payoutsData = await ctx.Payouts.Where(p => p.PullPaymentDataId == pullPaymentId).ToListAsync();
-                    Assert.True(payoutsData.All(p => p.State == Data.PayoutState.Completed));
+                    Assert.True(payoutsData.All(p => p.State == PayoutState.Completed));
                 });
             }
         }
