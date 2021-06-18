@@ -359,7 +359,7 @@ namespace BTCPayServer.Controllers
             return new InvoiceDetailsModel
             {
                 Archived = invoice.Archived,
-                Payments = invoice.GetPayments(),
+                Payments = invoice.GetPayments(false),
                 CryptoPayments = invoice.GetPaymentMethods().Select(
                     data =>
                     {
@@ -561,7 +561,7 @@ namespace BTCPayServer.Controllers
                 Status = invoice.StatusString,
 #pragma warning restore CS0618 // Type or member is obsolete
                 NetworkFee = paymentMethodDetails.GetNextNetworkFee(),
-                IsMultiCurrency = invoice.GetPayments().Select(p => p.GetPaymentMethodId()).Concat(new[] { paymentMethod.GetId() }).Distinct().Count() > 1,
+                IsMultiCurrency = invoice.GetPayments(false).Select(p => p.GetPaymentMethodId()).Concat(new[] { paymentMethod.GetId() }).Distinct().Count() > 1,
                 StoreId = store.Id,
                 AvailableCryptos = invoice.GetPaymentMethods()
                                           .Where(i => i.Network != null)
@@ -903,21 +903,20 @@ namespace BTCPayServer.Controllers
                     var jObject = JObject.Parse(posData);
                     foreach (var item in jObject)
                     {
-
                         switch (item.Value.Type)
                         {
                             case JTokenType.Array:
                                 var items = item.Value.AsEnumerable().ToList();
                                 for (var i = 0; i < items.Count; i++)
                                 {
-                                    result.Add($"{item.Key}[{i}]", ParsePosData(items[i].ToString()));
+                                    result.TryAdd($"{item.Key}[{i}]", ParsePosData(items[i].ToString()));
                                 }
                                 break;
                             case JTokenType.Object:
-                                result.Add(item.Key, ParsePosData(item.Value.ToString()));
+                                result.TryAdd(item.Key, ParsePosData(item.Value.ToString()));
                                 break;
                             default:
-                                result.Add(item.Key, item.Value.ToString());
+                                result.TryAdd(item.Key, item.Value.ToString());
                                 break;
                         }
 
@@ -925,7 +924,7 @@ namespace BTCPayServer.Controllers
                 }
                 catch
                 {
-                    result.Add(string.Empty, posData);
+                    result.TryAdd(string.Empty, posData);
                 }
                 return result;
             }

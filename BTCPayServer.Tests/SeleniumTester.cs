@@ -64,21 +64,17 @@ namespace BTCPayServer.Tests
             }
             options.AddArguments($"window-size={windowSize.Width}x{windowSize.Height}");
             options.AddArgument("shm-size=2g");
+            options.AddArgument("start-maximized");
 
             var cds = ChromeDriverService.CreateDefaultService(chromeDriverPath);
+            cds.EnableVerboseLogging = true;
             cds.Port = Utils.FreeTcpPort();
             cds.HostName = "127.0.0.1";
             cds.Start();
-            Driver = new ChromeDriver(cds, options, 
+            Driver = new ChromeDriver(cds, options,
                 // A bit less than test timeout
                 TimeSpan.FromSeconds(50));
-
-            if (runInBrowser)
-            {
-                // ensure maximized window size
-                // otherwise TESTS WILL FAIL because of different hierarchy in navigation menu
-                Driver.Manage().Window.Maximize();
-            }
+            Driver.Manage().Window.Maximize();
 
             Logs.Tester.LogInformation($"Selenium: Using {Driver.GetType()}");
             Logs.Tester.LogInformation($"Selenium: Browsing to {Server.PayTester.ServerUri}");
@@ -160,11 +156,8 @@ namespace BTCPayServer.Tests
 
             Driver.FindElement(By.Id("ScriptPubKeyType")).Click();
             Driver.FindElement(By.CssSelector($"#ScriptPubKeyType option[value={format}]")).Click();
-
-            // Open advanced settings via JS, because if we click the link it triggers the toggle animation.
-            // This leads to Selenium trying to click the button while it is moving resulting in an error.
-            Driver.ExecuteJavaScript("document.getElementById('AdvancedSettings').classList.add('show')");
-
+            
+            Driver.ToggleCollapse("AdvancedSettings");
             Driver.SetCheckbox(By.Id("ImportKeysToRPC"), importkeys);
             Driver.FindElement(By.Id("Continue")).Click();
 
@@ -218,15 +211,20 @@ namespace BTCPayServer.Tests
             {
                 Driver.FindElement(By.CssSelector("label[for=\"LightningNodeType-Custom\"]")).Click();
                 Driver.FindElement(By.Id("ConnectionString")).SendKeys(connectionString);
+
+                Driver.FindElement(By.Id("test")).Click();
+                Assert.Contains("Connection to the Lightning node successful.", FindAlertMessage().Text);
             }
 
-            var enabled = Driver.FindElement(By.Id("Enabled"));
-            if (!enabled.Selected) enabled.Click();
-
-            Driver.FindElement(By.Id("test")).Click();
-            Assert.Contains("Connection to the Lightning node succeeded.", FindAlertMessage().Text);
-
             Driver.FindElement(By.Id("save")).Click();
+            Assert.Contains($"{cryptoCode} Lightning node updated.", FindAlertMessage().Text);
+
+            var enabled = Driver.FindElement(By.Id($"{cryptoCode}LightningEnabled"));
+            if (enabled.Text == "Enable")
+            {
+                enabled.Click();
+                Assert.Contains($"{cryptoCode} Lightning payments are now enabled for this store.", FindAlertMessage().Text);
+            }
         }
 
         public void ClickOnAllSideMenus()
@@ -366,22 +364,22 @@ namespace BTCPayServer.Tests
             Driver.FindElement(By.Id("bip21parse")).Click();
             Driver.SwitchTo().Alert().SendKeys(bip21);
             Driver.SwitchTo().Alert().Accept();
-            Driver.FindElement(By.Id("SendMenu")).Click();
-            Driver.FindElement(By.CssSelector("button[value=nbx-seed]")).Click();
+            Driver.FindElement(By.Id("SignTransaction")).Click();
+            Driver.FindElement(By.Id("SignWithSeed")).Click();
             Driver.FindElement(By.CssSelector("button[value=broadcast]")).Click();
         }
 
         private void CheckForJSErrors()
         {
             //wait for seleniun update: https://stackoverflow.com/questions/57520296/selenium-webdriver-3-141-0-driver-manage-logs-availablelogtypes-throwing-syste
-            //            var errorStrings = new List<string> 
-            //            { 
-            //                "SyntaxError", 
-            //                "EvalError", 
-            //                "ReferenceError", 
-            //                "RangeError", 
-            //                "TypeError", 
-            //                "URIError" 
+            //            var errorStrings = new List<string>
+            //            {
+            //                "SyntaxError",
+            //                "EvalError",
+            //                "ReferenceError",
+            //                "RangeError",
+            //                "TypeError",
+            //                "URIError"
             //            };
             //
             //            var jsErrors = Driver.Manage().Logs.GetLog(LogType.Browser).Where(x => errorStrings.Any(e => x.Message.Contains(e)));
@@ -408,7 +406,7 @@ namespace BTCPayServer.Tests
         {
             Driver.Navigate().GoToUrl(new Uri(Server.PayTester.ServerUri, relativeUrl));
         }
-        
+
         public void GoToServer(ServerNavPages navPages = ServerNavPages.Index)
         {
             Driver.FindElement(By.Id("ServerSettings")).Click();

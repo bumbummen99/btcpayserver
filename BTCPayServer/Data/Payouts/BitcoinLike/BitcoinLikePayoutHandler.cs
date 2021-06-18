@@ -18,6 +18,7 @@ using NBitcoin.Payment;
 using NBitcoin.RPC;
 using NBXplorer.Models;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using NewBlockEvent = BTCPayServer.Events.NewBlockEvent;
 using PayoutData = BTCPayServer.Data.PayoutData;
 
@@ -70,8 +71,16 @@ public class BitcoinLikePayoutHandler : IPayoutHandler
         if (payout?.Proof is null)
             return null;
         var paymentMethodId = payout.GetPaymentMethodId();
-        var res =  JsonConvert.DeserializeObject<PayoutTransactionOnChainBlob>(Encoding.UTF8.GetString(payout.Proof), _jsonSerializerSettings.GetSerializer(paymentMethodId.CryptoCode));
+        var raw =  JObject.Parse(Encoding.UTF8.GetString(payout.Proof));
+        if (raw.TryGetValue("proofType", StringComparison.InvariantCultureIgnoreCase, out var proofType) &&
+            proofType.Value<string>() == ManualPayoutProof.Type)
+        {
+            return raw.ToObject<ManualPayoutProof>();
+        }
+        var res = raw.ToObject<PayoutTransactionOnChainBlob>(
+            JsonSerializer.Create(_jsonSerializerSettings.GetSerializer(paymentMethodId.CryptoCode)));
         var network = _btcPayNetworkProvider.GetNetwork<BTCPayNetwork>(paymentMethodId.CryptoCode);
+        if (res == null) return null;
         res.LinkTemplate = network.BlockExplorerLink;
         return res;
     }
@@ -227,7 +236,10 @@ public class BitcoinLikePayoutHandler : IPayoutHandler
                 if (!payoutByDestination.TryGetValue(destination.Key, out var payout))
                     continue;
                 var payoutBlob = payout.GetBlob(_jsonSerializerSettings);
-                if (destination.Value != payoutBlob.CryptoAmount)
+                if (payoutBlob.CryptoAmount is null ||
+                    // The round up here is not strictly necessary, this is temporary to fix existing payout before we
+                    // were properly roundup the crypto amount
+                    destination.Value != BTCPayServer.Extensions.RoundUp(payoutBlob.CryptoAmount.Value, network.Divisibility))
                     continue;
                 var proof = ParseProof(payout) as PayoutTransactionOnChainBlob;
                 if (proof is null)

@@ -1,5 +1,69 @@
 # Changelog
 
+## 1.1.2
+
+* Fix: Unable to activate shopify integration @Kukks
+
+## 1.1.1
+
+### Improvements:
+
+* Update BC-UR bundle and support decoding hex format of wallet (#2505 #2499) @Kukks
+
+### Bug fixes:
+
+* During refund or payout, some payments issued from BTCPay were not properly detected. (#2513 #2518) @Kukks @NicolasDorier
+* Fix payment button steps and validation range (#2506 #2503) @Kukks
+* The local culture of the server could break some feature on BTCPay Server (#2512) @NicolasDorier
+* Make sure unaccounted payments (double spent payments, or payjoin original transaction), are not accounted by the payment requests and crowdfund app @NicolasDorier
+* Coinswitch page was not reflecting correctly in the side navigation @kukks
+* Coinswitch showed as enabled when it was configured but disabled @kukks
+* Lightning payment were not detected if `Only enable the payment method after user explicitly chooses it` was checked for the store @kukks
+
+## 1.1.0
+
+### Improvements:
+
+* Improving navigation between files and storage services and rewording info text (#2272) @rockstardev
+* UI: Header and navigation improvements (#2412 #2378) @dennisreimann @dstrukt
+* Plugins will be disabled in the case of an unrecoverable runtime error caused by a plugin @Kukks
+* UI: Improve Lightning setup page (#2348 #2477) @dennisreimann @dstrukt
+* Greenfield: Provides unconf/conf balance, keypath + address + timestamp + confirmation count of utxos @Kukks
+* Add `BTCPAY_TOR_SERVICES` configuration to expose tor services via the server settings. Useful for integration with self-hosted node such as Umbrel (#2388) @Kukks @junderw
+* Payment methods can be toggled directly from the update store page, rather than inside the page of each payment method (#2469) @dennisreimann
+* Start separation of Coinswitch feature and Shopify integration as plugins (#2384 #2390) @Kukks 
+* Greenfield: Ability to pass more query parameters to filter results of api/v1/invoices @SakerOmera
+* Human friendly error if webhook or webhook delivery not found @NicolasDorier
+* Add button to copy API key to clipboard (#2439) @ubolator
+
+### New features:
+
+* Support WebAuthN/FIDO2 as second factor @Kukks
+* Can get a receive address in the wallet accepting Payjoin (without creating an invoice) @Kukks
+* Can disable modification of SSH settings via the server settings to prevent escalation of privilege. (See #2468) @NicolasDorier
+* Manual coin selection has a "confirmed utxo" filter @Kukks
+* Greenfield: Can query fee rate @Kukks
+* New setting for checkout: Ability to activate specific payment methods after the creation of the invoice @xpayserver @Kukks @rockstardev 
+
+### Bug fixes:
+
+* Fix: Clicking on "Unreserve this address" was not properly reflected in the UI @Kukks
+* Fix: Block explorer links for signet @kristapsk
+* Fix: Typo in PoS cart view (#2428) @MaxHillebrand
+* Allow accessing "misc/lang" endpoint with Greenfield auth schemes (#2471) @bolatovumar
+* Greenfield: Fix typo of webhook type OrignalDeliveryId => OriginalDeliveryId @NicolasDorier
+* If the posData property of invoice metadata was not a JObject, the invoice would crash @Kukks
+* If a store was created via the Greenfield API, warning signs of unconfigured stores would not appear. (Fix #2434) @bolatovumar
+* Do not crash if plugin folder mismatches plugin identifier @Kukks 
+* Fix notification count on mobile (#2483) @dennisreimann 
+* Fix: Passing invalid query parameters or route value in the Greenfield API should returns HTTP 422 + validation details rather than empty 400. @NicolasDorier
+* Greenfield: Deleting a store in the server, should delete only webhooks of this store @NicolasDorier
+
+### Miscellaneous
+
+* Add user id in logs when somebody logs in. @NicolasDorier
+* Fix: Json type in doc API @g33kme
+
 ## 1.0.7.2
 
 Small release fixing bugs introduced in 1.0.7.1:

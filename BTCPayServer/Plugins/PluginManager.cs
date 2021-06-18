@@ -5,7 +5,6 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.InteropServices.ComTypes;
 using BTCPayServer.Abstractions.Contracts;
 using BTCPayServer.Configuration;
 using McMaster.NETCore.Plugins;
@@ -28,7 +27,7 @@ namespace BTCPayServer.Plugins
 
         public static bool IsExceptionByPlugin(Exception exception)
         {
-           return  _pluginAssemblies.Any(assembly => assembly.FullName.Contains(exception.Source, StringComparison.OrdinalIgnoreCase));
+            return _pluginAssemblies.Any(assembly => assembly?.FullName?.Contains(exception.Source!, StringComparison.OrdinalIgnoreCase) is true);
         }
         public static IMvcBuilder AddPlugins(this IMvcBuilder mvcBuilder, IServiceCollection serviceCollection,
             IConfiguration config, ILoggerFactory loggerFactory)
@@ -77,35 +76,52 @@ namespace BTCPayServer.Plugins
             }
 
             var disabledPlugins = GetDisabledPlugins(pluginsFolder);
-           
-            
+
+
 
             foreach (var dir in orderedDirs)
             {
                 var pluginName = Path.GetFileName(dir);
+                var pluginFilePath = Path.Combine(dir, pluginName + ".dll");
                 if (disabledPlugins.Contains(pluginName))
                 {
                     continue;
                 }
-                
-                var plugin = PluginLoader.CreateFromAssemblyFile(
-                    Path.Combine(dir, pluginName + ".dll"), // create a plugin from for the .dll file
-                    config =>
-                    {
-                        
-                        // this ensures that the version of MVC is shared between this app and the plugin
-                        config.PreferSharedTypes = true;
-                        config.IsUnloadable = true;
-                    });
+                if (!File.Exists(pluginFilePath))
+                {
+                    _logger.LogError(
+                        $"Error when loading plugin {pluginName} - {pluginFilePath} does not exist");
+                    continue;
+                }
 
-                mvcBuilder.AddPluginLoader(plugin);
-                var pluginAssembly = plugin.LoadDefaultAssembly();
-                _pluginAssemblies.Add(pluginAssembly);
-                _plugins.Add(plugin);
-                var fileProvider = CreateEmbeddedFileProviderForAssembly(pluginAssembly);
-                loadedPlugins.Add((plugin, pluginAssembly, fileProvider));
-                plugins.AddRange(GetAllPluginTypesFromAssembly(pluginAssembly)
-                    .Select(GetPluginInstanceFromType));
+                try
+                {
+
+                    var plugin = PluginLoader.CreateFromAssemblyFile(
+                        pluginFilePath, // create a plugin from for the .dll file
+                        config =>
+                        {
+
+                            // this ensures that the version of MVC is shared between this app and the plugin
+                            config.PreferSharedTypes = true;
+                            config.IsUnloadable = true;
+                        });
+
+                    mvcBuilder.AddPluginLoader(plugin);
+                    var pluginAssembly = plugin.LoadDefaultAssembly();
+                    _pluginAssemblies.Add(pluginAssembly);
+                    _plugins.Add(plugin);
+                    var fileProvider = CreateEmbeddedFileProviderForAssembly(pluginAssembly);
+                    loadedPlugins.Add((plugin, pluginAssembly, fileProvider));
+                    plugins.AddRange(GetAllPluginTypesFromAssembly(pluginAssembly)
+                        .Select(GetPluginInstanceFromType));
+
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e,
+                        $"Error when loading plugin {pluginName}");
+                }
             }
 
             foreach (var plugin in plugins)
